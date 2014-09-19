@@ -1,0 +1,205 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "AWS CloudFormation Template for Building HUIT DBA standard Oracle RDS.",
+
+  "Parameters" : {
+
+    "KeyName": {
+      "Description" : "HPAC EC2 KeyPair to enable SSH access to the instances",
+      "Type": "String",
+      "MinLength": "1",
+      "MaxLength": "255",
+      "AllowedPattern" : "[\\x20-\\x7E]*",
+      "ConstraintDescription" : "can contain only ASCII characters."
+    },
+
+    "Label": {
+      "Description" : "A label to distinguish this deployment from others",
+      "Type": "String",
+      "MinLength": "1",
+      "MaxLength": "255"
+    },
+
+    "DBName": {
+      "Default": "oracledb",
+      "Description" : "The Oracle database name",
+      "Type": "String",
+      "MinLength": "1",
+      "MaxLength": "64",
+      "AllowedPattern" : "[a-zA-Z][a-zA-Z0-9]*",
+      "ConstraintDescription" : "must begin with a letter and contain only alphanumeric characters."
+    },
+
+    "DBUsername": {
+      "Default": "oraadmin",
+      "NoEcho": "true",
+      "Description" : "The Oracle database admin account username",
+      "Type": "String",
+      "MinLength": "1",
+      "MaxLength": "16",
+      "AllowedPattern" : "[a-zA-Z][a-zA-Z0-9]*",
+      "ConstraintDescription" : "must begin with a letter and contain only alphanumeric characters."
+    },
+
+    "DBPassword": {
+      "NoEcho": "true",
+      "Description" : "The Oracle database admin account password",
+      "Type": "String",
+      "MinLength": "8",
+      "MaxLength": "41",
+      "AllowedPattern" : "[a-zA-Z0-9]*",
+      "ConstraintDescription" : "must contain only alphanumeric characters."
+    },
+
+    "DBClass" : {
+      "Default" : "db.m2.xlarge",
+      "Description" : "Database instance class",
+      "Type" : "String",
+      "AllowedValues" : [ "db.m1.small", "db.m1.large", "db.m1.xlarge", "db.m2.xlarge", "db.m2.2xlarge", "db.m2.4xlarge" ],
+      "ConstraintDescription" : "must select a valid database instance type."
+    },
+
+    "DBAllocatedStorage" : {
+      "Default": "10",
+      "Description" : "The size of the database (Gb)",
+      "Type": "Number",
+      "MinValue": "10",
+      "MaxValue": "3072",
+      "ConstraintDescription" : "must be between 5 and 1024Gb."
+    },
+
+    "ListenerPort" : {
+      "Default": "8003",
+      "Description" : "The Oracle database listener port",
+      "Type": "Number",
+      "MinValue": "1150",
+      "MaxValue": "65536",
+      "ConstraintDescription" : "HUIT recommended between 8000 and 8999."
+    },
+
+    "BackupRetention" : {
+      "Default": "35",
+      "Description" : "The number of days Oracle backups are retained",
+      "Type": "Number",
+      "MinValue": "0",
+      "MaxValue": "35",
+      "ConstraintDescription" : "HUIT recommended backup retention period.  Setting to 0 disables backups."
+    },
+
+    "LicenseType" : {
+      "Default": "bring-your-own-license",
+      "Description" : "The license type for this RDS",
+      "Type": "String",
+      "ConstraintDescription" : "References that HUIT DBA supported instances are built using Harvard Site license."
+    },
+
+    "MultiAZDatabase": {
+      "Default": "true",
+      "Description" : "Create a multi-AZ MySQL Amazon RDS database instance",
+      "Type": "String",
+      "AllowedValues" : [ "true", "false" ],
+      "ConstraintDescription" : "must be either true or false."
+    }
+},
+
+  "Mappings" : {
+    "AWSInstanceType2Arch" : {
+      "t1.micro" : { "Arch" : "64" },
+      "m1.small" : { "Arch" : "64" },
+      "m1.medium" : { "Arch" : "64" },
+      "m1.large" : { "Arch" : "64" },
+      "m1.xlarge" : { "Arch" : "64" },
+      "m2.xlarge" : { "Arch" : "64" },
+      "m2.2xlarge" : { "Arch" : "64" },
+      "m2.4xlarge" : { "Arch" : "64" },
+      "m3.xlarge" : { "Arch" : "64" },
+      "m3.2xlarge" : { "Arch" : "64" },
+      "c1.medium" : { "Arch" : "64" },
+      "c1.xlarge" : { "Arch" : "64" },
+      "cc1.4xlarge" : { "Arch" : "64HVM" },
+      "cc2.8xlarge" : { "Arch" : "64HVM" },
+      "cg1.4xlarge" : { "Arch" : "64HVM" }
+    },
+
+    "AWSRegionArch2AMI" : {
+      "us-east-1" : { "32" : "ami-178e927e", "64" : "ami-fb8e9292", "64HVM" : "ami-978d91fe" },
+      "us-west-2" : { "32" : "ami-1e3a502e", "64" : "ami-043a5034", "64HVM" : "ami-383a5008" },
+      "us-west-1" : { "32" : "ami-78ba833d", "64" : "ami-7aba833f", "64HVM" : "ami-5aba831f" }
+    }
+  },
+
+  "Resources" : {
+
+   "DBParmGroup" : {
+       "Type": "AWS::RDS::DBParameterGroup",
+       "Properties" : {
+          "Description" : "Oracle DB Parameter Group",
+          "Family" : "oracle-ee-11.2",
+          "Parameters" : {
+             "sga_target" : "8000000000",
+             "audit_trail" : "DB_EXTENDED",
+             "compatible" : "11.2.0.4",
+             "db_domain" : "HARVARD.EDU",
+             "job_queue_processes" : "10",
+             "open_cursors" : "1000",
+             "pga_aggregate_target" : "524288000",
+             "processes" : "1000",
+             "sql92_security" : "TRUE"
+          },
+          "Tags" : [
+          { "Key"  : "Name", "Value" : { "Fn::Join" : ["", [{"Ref" : "Label"} , " - ", "Oracle DB Parameter Group"]]}}
+          ]
+       }
+    },
+
+    "MasterDB" : {
+      "Type" : "AWS::RDS::DBInstance",
+      "Properties" : {
+        "DBName" : { "Ref" : "DBName" },
+        "AllocatedStorage" : { "Ref" : "DBAllocatedStorage" },
+        "DBInstanceClass" : { "Ref" : "DBClass" },
+        "Engine" : "oracle-ee",
+        "EngineVersion" : "11.2.0.4.v1",
+        "DBInstanceIdentifier" : { "Fn::Join" : ["", [{"Ref" : "Label"} ,"MasterDatabase"]]},
+        "DBParameterGroupName" : { "Ref": "DBParmGroup" },
+        "DBSecurityGroups": [ { "Ref": "DBSecurityByCIDRIPGroup" } ],
+        "MasterUsername" : { "Ref" : "DBUsername" },
+        "MasterUserPassword" : { "Ref" : "DBPassword" },
+        "MultiAZ" : { "Ref" : "MultiAZDatabase" },
+        "Port" : { "Ref" : "ListenerPort" },
+        "BackupRetentionPeriod" : { "Ref" : "BackupRetention" },
+        "LicenseModel" : { "Ref" : "LicenseType" },
+        "Tags" : [
+          { "Key"  : "Name", "Value" : { "Fn::Join" : ["", [{"Ref" : "Label"} , " - ", "Master Database"]]}}
+        ]
+      },
+      "DeletionPolicy" : "Snapshot"
+    },
+
+    "DBSecurityByCIDRIPGroup" : {
+      "Type" : "AWS::RDS::DBSecurityGroup",
+       "Properties" : {
+         "GroupDescription" : "Ingress for CIDRIP",
+         "DBSecurityGroupIngress" : { "CIDRIP" : "128.103.150.0/24" }
+       }
+    }
+
+
+  },
+  
+  "Outputs" : {
+
+
+    "MasterJDBCConnectionString": {
+      "Description" : "JDBC connection string for the master database",
+      "Value" : { "Fn::Join": [ "", [ "jdbc:oracle://",
+                                      { "Fn::GetAtt": [ "MasterDB", "Endpoint.Address" ] },
+                                      ":",
+                                      { "Fn::GetAtt": [ "MasterDB", "Endpoint.Port" ] },
+                                      "/",
+                                      { "Ref": "DBName" }]]}
+    }
+
+}
+}
